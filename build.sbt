@@ -11,7 +11,7 @@ resolvers ++= Seq(
 
 // For Akka 2.4.x and Scala 2.11.x
 libraryDependencies ++= Seq(
-  "com.typesafe.akka" %% "akka-actor" % "2.4.1",
-  "io.spray" %  "spray-client" % "1.2.3",
+  "com.typesafe.akka" %% "akka-actor" % "2.3.2",
+  "io.spray" %%  "spray-client" % "1.3.1",
   "org.scala-lang.modules" %% "scala-xml" % "1.0.3"
 )
