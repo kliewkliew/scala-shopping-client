@@ -8,3 +8,6 @@ I am writing this client so that I can snipe auctions using the Remambo deputy s
 
 If you would like to register, you can use my affiliate link :)
 `https://www.remambo.jp/?auc7531`
+
+## Implementation Details
+Http requests execute asynchronously using `Future`s and the `Spray` library. Clients are composed of mixin `trait`s. 
