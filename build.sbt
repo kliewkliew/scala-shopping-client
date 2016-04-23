@@ -13,5 +13,6 @@ resolvers ++= Seq(
 libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-actor" % "2.3.2",
   "io.spray" %%  "spray-client" % "1.3.1",
+  "org.jsoup" % "jsoup" % "1.8.3",
   "org.scala-lang.modules" %% "scala-xml" % "1.0.3"
 )

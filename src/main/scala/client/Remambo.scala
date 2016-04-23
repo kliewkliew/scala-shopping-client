@@ -1,53 +1,64 @@
 package client
 
+import Token._
+
+import scala.concurrent.duration._
+import scala.concurrent.{Await, Future}
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
 import scala.language.implicitConversions
 import scala.util.control.NonFatal
 import scala.util.{Try, Failure, Success}
-import scala.xml.{Node, NodeSeq}
 
 import akka.actor.ActorSystem
 
 import spray.client.pipelining._
 import spray.http._
-import spray.httpx.encoding.Gzip
 import spray.http.HttpEncodings._
 import spray.http.HttpHeaders._
+import spray.http.MediaTypes._
+import spray.httpx.encoding.Gzip
+import spray.httpx.unmarshalling._
+
+import org.jsoup.Jsoup
 
 class Remambo extends Service with Sniper /*with Buyer*/ {
   private val url = "https://www.remambo.jp"
   implicit private val actorSystem = ActorSystem("forPipeline")
+  private val userAgent =
+    "Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Chrome/49.0.2623.110 Safari/537.36 Vivaldi/1.1.443.3"
 
   /**
     * Construct the URI
+    *
     * @param endpoint
     * @return
     */
-  private def uri(implicit endpoint: String) = Uri(url + "/" + endpoint)
+  private def uri(implicit endpoint: Uri) = Uri(url + "/" + endpoint)
 
   /**
     * Gzip encode a request, send it, and decode the response
     */
-  val gzipPipeline: HttpRequest => Future[HttpResponse] = encode(Gzip) ~> sendReceive ~> decode(Gzip)
+  val gzipPipeline: HttpRequest => Future[HttpResponse] = sendReceive ~> decode(Gzip)
 
   private def requestToResponse(implicit request: HttpRequest): Future[HttpResponse] = gzipPipeline(request)
 
-  private def requestToResponseXML(implicit request: HttpRequest): Future[NodeSeq] = {
-    val newPipeline = gzipPipeline ~> unmarshal[NodeSeq]
+  private def requestToToken(implicit request: HttpRequest): Future[Try[Token]] = {
+    implicit val tokenUnmarshaller = TokenUnmarshaller
+    val newPipeline = gzipPipeline ~> unmarshal[Try[Token]]
     newPipeline(request)
   }
 
   override def authenticate(implicit credentials: Credentials): Future[Try[CookieWrapper]] = {
-    implicit val endpoint = "auth"
+    implicit val endpoint: Uri = "auth"
 
     implicit val request =
-      Post(uri,
+      (Post(uri,
         FormData(Map(
           "set_login" -> credentials.username,
           "set_pass" -> credentials.password))
       ) ~> addHeader(`Accept-Encoding`(gzip))
-      // add Content-Type header? or does the pipeline take care of that?
+        ~> addHeader(`User-Agent`(userAgent)))
 
     requestToResponse map {
       case response =>
@@ -82,13 +93,14 @@ class Remambo extends Service with Sniper /*with Buyer*/ {
 
   /**
     * Request the preview to extract a Token with which we can place a bid
+    *
     * @param auction_id
     * @param offer Price offer
     * @param unwrap Session cookies wrapped in a case class because Try cannot distinguish between different types of List
     * @return The token and signature
     */
   private def bidPreview(auction_id: String, offer: Short)(implicit unwrap: CookieWrapper): Future[Try[Token]] = {
-    implicit val endpoint = "auction/bid_preview"
+    implicit val endpoint: Uri = "auction/bid_preview"
 
     implicit val request =
       (Post(uri,
@@ -98,16 +110,17 @@ class Remambo extends Service with Sniper /*with Buyer*/ {
           "quantity" -> 1.toString,
           "submit_button" -> "Place bid"))
       ) ~> addHeader(`Accept-Encoding`(gzip))
-        ~> addHeader(Cookie(unwrap.cookies)))
-    // add Content-Type header? or does the pipeline take care of that?
+        ~> addHeader(Cookie(unwrap.cookies))
+        ~> addHeader(`User-Agent`(userAgent)))
 
-    requestToResponseXML map {
-      case token => token // implicit conversion
+    requestToToken map {
+      case token => token
     }
   }
 
   /**
     * Place a bid
+    *
     * @param auction_id
     * @param offer Price offer
     * @param token Token used to validate a bid
@@ -115,7 +128,7 @@ class Remambo extends Service with Sniper /*with Buyer*/ {
     * @return
     */
   private def bidPlace(auction_id: String, offer: Short, token: Token)(implicit unwrap: CookieWrapper): Future[Try[Boolean]] = {
-    implicit val endpoint = "auction/bid_place"
+    implicit val endpoint: Uri = "auction/bid_place"
 
     implicit val request =
       (Post(uri,
@@ -124,27 +137,60 @@ class Remambo extends Service with Sniper /*with Buyer*/ {
           "lot_no" -> auction_id,
           "quantity" -> 1.toString,
           "token" -> token.value,
-          "signature" -> token.signature))
+          "signature" -> token.signature,
+          "make" -> "Confirm Bid"))
       ) ~> addHeader(`Accept-Encoding`(gzip))
-        ~> addHeader(Cookie(unwrap.cookies)))
-    // add Content-Type header? or does the pipeline take care of that?
+        ~> addHeader(Cookie(unwrap.cookies))
+        ~> addHeader(`User-Agent`(userAgent)))
+
+    requestToResponse flatMap {
+      case response =>
+        val tryToken = claimToken(response)
+
+        tryToken match {
+          case Success(newToken) =>
+            bidPlace2(auction_id, offer, newToken)
+          case Failure(error) =>
+            Future.failed(error)
+        }
+    }
+  }
+
+  private def bidPlace2(auction_id: String, offer: Short, token: Token)(implicit unwrap: CookieWrapper): Future[Try[Boolean]] = {
+    implicit val endpoint: Uri = "modules/yahoo_auction/data_request/rate.php?"
+
+    implicit val request =
+      (Get(uri,
+        FormData(Map(
+          "user_rate" -> offer.toString,
+          "lot_no" -> auction_id,
+          "quantity" -> 1.toString,
+          "token" -> token.value,
+          "signature" -> token.signature,
+          "comments" -> "",
+          "deliveryType" -> "0"))
+      ) ~> addHeader(`Accept-Encoding`(gzip))
+        ~> addHeader(Cookie(unwrap.cookies))
+        ~> addHeader(`User-Agent`(userAgent)))
 
     requestToResponse map {
       case response =>
-      // TODO: verify bid and bidder, and was not outbid
-      Success(true)
+        // TODO: verify bid and bidder, and was not outbid
+        Success(true)
     }
   }
 }
 
 /**
   * Wrap a list of cookies so that they can be used as an implicit parameter
+  *
   * @param cookies
   */
 sealed case class CookieWrapper(cookies: List[HttpCookie]) extends Cookie
 
 /**
   * The token used to place a bid
+  *
   * @param value
   * @param signature
   */
@@ -152,31 +198,46 @@ sealed case class Token(value: String, signature: String)
 
 object Token {
   /**
-    * Extract the Token from the bid_preview HTML page
-    * @param response
+    * Unmarshal the Token from the bid_preview HTML page
+    *
     * @return A Token
     */
-  implicit def claimToken(response: NodeSeq): Try[Token] = {
-    val formInput = response \\ "input"
-    val token = formInput find nodeMatchingId("token") map nodeValue
-    val signature = formInput find nodeMatchingId("signature") map nodeValue
+  val TokenUnmarshaller =
+    Unmarshaller[Try[Token]](`text/html`) {
+      case HttpEntity.NonEmpty(contentType, data) =>
+        val root = Jsoup.parse(data.asString)
+        val formInput = root.select("input")
+        val token = formInput.select("input[name=token]").first().`val`
+        val signature = formInput.select("input[name=signature]").first().`val`
+
+        if (token.nonEmpty && signature.nonEmpty)
+          Success(Token(token, signature))
+        else
+        {
+          val errorMessage = root.select("div[class=alert alert-warning]").first.`val`
+          Failure(new IllegalStateException(if (errorMessage.nonEmpty) errorMessage else "Failed to get bidding token"))
+        }
+    }
+
+  /**
+    * Extract the Token from the bid_place HTML page
+    * @param httpResponse
+    * @return A Token
+    */
+  def claimToken(httpResponse: HttpResponse): Try[Token] = {
+    //ie. var script_url = "/modules/yahoo_auction/data_request/rate.php?token=5709f3949645a&signature=87922fb277d1a987546b09f704b441aa1fde980d";
+    val script_url = httpResponse.entity.asString.split("\n").find{_.contains("script_url")}
+
+    if (script_url.isEmpty) Failure(new IllegalStateException("Failed to get bidding token"))
+
+    val uri: Uri = script_url.get.split("\"")(1)
+
+    val token = uri.query.get("token")
+    val signature = uri.query.get("signature")
 
     if (token.isDefined && signature.isDefined)
       Success(Token(token.get, signature.get))
     else
       Failure(new IllegalStateException("Failed to get bidding token"))
   }
-
-  /**
-    * Determine whether a Node has a matching "id" attribute
-    * @param id
-    * @return True if the Node matches
-    */
-  private def nodeMatchingId(id: String) = {node: Node => (node \ "@id").text == id}
-
-  /**
-    * Get the text from the "value" attribute of a Node
-    * @return Text of the "value" attribute
-    */
-  private def nodeValue = {node: Node => (node \ "@value").text}
 }
