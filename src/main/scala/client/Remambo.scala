@@ -12,15 +12,15 @@ import akka.actor.ActorSystem
 
 import spray.client.pipelining._
 import spray.http._
-import spray.http.HttpHeaders.{Date => _, _}
-import spray.http.MediaTypes._
-import spray.httpx.unmarshalling._
+import spray.http.HttpHeaders.`Set-Cookie`
+import spray.http.MediaTypes.`text/html`
+import spray.httpx.unmarshalling.Unmarshaller
 
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
 class Remambo(username: String, password: String)(implicit actorSystem: ActorSystem)
-  extends Service(username, password) with YahooJapanAuctions /*with YahooJapanStore*/ {
+  extends Service(username, password) with YahooJapanAuctions /*with YahooJapanShopping*/ {
   implicit private val url: Uri = "https://www.remambo.jp"
 
   private def requestToToken(implicit request: HttpRequest): Future[Try[Token]] = {
@@ -29,7 +29,7 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
     newPipeline(request)
   }
 
-  override def authenticate: Future[Try[CookieWrapper]] = {
+  override def authenticate: Future[Try[Cookies]] = {
     val endpoint: Uri = "auth"
 
     implicit val request =
@@ -41,10 +41,11 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
 
     requestToResponse map {
       case response =>
+        //TODO: create CookiesUnmarshaller and pipeline
         val cookies = response.headers.collect{ case `Set-Cookie`(cookie) => cookie }
 
         if (cookies.nonEmpty)
-          Success(CookieWrapper(cookies))
+          Success(Cookies(cookies))
         else
           Failure(new IllegalStateException("Failed to authenticate"))
     }
@@ -75,10 +76,10 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
     *
     * @param auction_id
     * @param offer Price offer
-    * @param unwrap Session cookies
+    * @param cookies Session cookies
     * @return The token and signature
     */
-  private def bidPreview(auction_id: String, offer: Short)(implicit unwrap: CookieWrapper): Future[Try[Token]] = {
+  private def bidPreview(auction_id: String, offer: Short)(implicit cookies: Cookies): Future[Try[Token]] = {
     val endpoint: Uri = "auction/bid_preview"
 
     implicit val request =
@@ -101,10 +102,10 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
     * @param auction_id
     * @param offer Price offer
     * @param token Token used to validate a bid
-    * @param unwrap Session cookies
+    * @param cookies Session cookies
     * @return true on success
     */
-  private def bidPlace(auction_id: String, offer: Short, token: Token)(implicit unwrap: CookieWrapper): Future[Try[Token]] = {
+  private def bidPlace(auction_id: String, offer: Short, token: Token)(implicit cookies: Cookies): Future[Try[Token]] = {
     val endpoint: Uri = "auction/bid_place"
 
     implicit val request =
@@ -129,10 +130,10 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
     * @param auction_id
     * @param offer Price offer
     * @param token Token used to validate a bid
-    * @param unwrap Session cookies
+    * @param cookies Session cookies
     * @return true on success
     */
-  private def bidPlace2(auction_id: String, offer: Short, token: Token)(implicit unwrap: CookieWrapper): Future[Try[Boolean]] = {
+  private def bidPlace2(auction_id: String, offer: Short, token: Token)(implicit cookies: Cookies): Future[Try[Boolean]] = {
     val endpoint: Uri = "modules/yahoo_auction/data_request/rate.php"
 
     val finalEndpoint: Uri =
@@ -143,17 +144,26 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
         "token" -> token.value,
         "signature" -> token.signature))
 
-    implicit val request = Get(uri(endpoint)) ~> addHeaders(authHeaders)
+    implicit val request = Get(uri(finalEndpoint)) ~> addHeaders(authHeaders)
 
-    requestToResponse flatMap  {
+    requestToResponse flatMap {
       case response => confirmBid(auction_id)
     }
   }
 
-  override def confirmBid(auction_id: String)(implicit unwrap: CookieWrapper): Future[Try[Boolean]] = {
+  override def confirmBid(auction_id: String)(implicit cookies: Cookies): Future[Try[Boolean]] = {
     findAuctionInfo(auction_id, "Highest Bidder") map {
       case Success(higherBidder) =>
         Success(higherBidder == "You")
+      case Failure(error) =>
+        Failure(error)
+    }
+  }
+
+  override def getMinimumIncrement(auction_id: String)(implicit cookies: Cookies): Future[Try[Short]] = {
+    findAuctionInfo(auction_id, "Bid Step") map {
+      case Success(increment) =>
+        Success(increment.toShort)
       case Failure(error) =>
         Failure(error)
     }
@@ -164,10 +174,10 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
     *
     * @param auction_id
     * @param desiredHeader The row header to search for
-    * @param unwrap Session cookies
+    * @param cookies Session cookies
     * @return The cell value associated with desiredHeader
     */
-  private def findAuctionInfo(auction_id: String, desiredHeader: String)(implicit unwrap: CookieWrapper): Future[Try[String]] = {
+  private def findAuctionInfo(auction_id: String, desiredHeader: String)(implicit cookies: Cookies): Future[Try[String]] = {
     val endpoint: Uri = "auction/item/" + auction_id
 
     implicit val request = Get(uri(endpoint)) ~> addHeaders(authHeaders)
@@ -178,7 +188,7 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
         val auc_info = root.select("div[id=auc_info]").select("table").select("tr")
 
         if (auc_info.isEmpty)
-          Failure(new IllegalStateException("Failed to confirm bid"))
+          Failure(new IllegalStateException("Failed to get " + desiredHeader))
         else
           findAuctionInfoRow(auc_info.first, desiredHeader)
     }
@@ -200,16 +210,6 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
     else
       findAuctionInfoRow(currentRow.nextElementSibling, desiredHeader)
   }
-
-  override def getMinimumIncrement(auction_id: String)(implicit unwrap: CookieWrapper): Future[Try[Short]] = {
-    findAuctionInfo(auction_id, "Bid Step") map {
-      case Success(increment) =>
-        Success(increment.toShort)
-      case Failure(error) =>
-        Failure(error)
-    }
-  }
-
 }
 
 /**

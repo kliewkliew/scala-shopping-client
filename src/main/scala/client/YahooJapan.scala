@@ -21,7 +21,7 @@ trait YahooJapanAuctions extends Sniper {
     val finalEndpoint: Uri =
       endpoint.withQuery(Map(
         "aID" -> auction_id,
-        "nowtime" -> (new Date().getTime / 1000).toString))
+        "nowtime" -> new Date().getTime.toString))
 
     implicit val request = Get(uri(endpoint)) ~> addHeaders(headers)
 
@@ -41,11 +41,14 @@ trait YahooJapanAuctions extends Sniper {
   }
 
   /**
-    * Get the minimum increment in bid
+    * Get the minimum increment in bid. Not exposed by YHJ API (since we can't login to YHJ directly)
+    * so get this from the deputy service.
     *
     * @param auction_id
+    * @param cookies Session cookies
+    * @return
     */
-  def getMinimumIncrement(auction_id: String)(implicit unwrap: CookieWrapper): Future[Try[Short]]
+  def getMinimumIncrement(auction_id: String)(implicit cookies: Cookies): Future[Try[Short]]
 }
 
 trait YahooJapanShopping extends Buyer {
