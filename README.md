@@ -1,8 +1,9 @@
 Sniper Client for Japan Deputy Shopping Services
 ==============
 
-This client will eventually add sniper capabilities (bidding right before the auction ends instead of exposing your bid early) for the deputy services that do not provide sniping services.
-Another possible feature is to watch the price of a store (not auction) item and auto-buy below a threshold. One could also extend eBay by adding the ability to bid conditionally, with more features than you would find in a typical sniper service.
+This client adds sniper capabilities (bidding right before the auction ends instead of exposing your bid early) for the deputy services that do not provide sniping services.
+Another possible feature is to watch the price of a store (not auction) item and auto-buy below a threshold.
+One could also extend eBay by adding the ability to bid conditionally, with more features than you would find in a typical sniper service.
 
 I am writing this client so that I can snipe auctions using the Remambo deputy service, which differs from other services by offering upfront charges, a two month storage period (twice as long as usual), and allowing you to bid up to *20x* your deposit (most allow 1x deposit).
 
