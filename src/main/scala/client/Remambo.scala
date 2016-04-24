@@ -2,8 +2,7 @@ package client
 
 import Token._
 
-import scala.concurrent.duration._
-import scala.concurrent.{Await, Future}
+import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.language.implicitConversions
 import scala.util.control.NonFatal
@@ -21,7 +20,7 @@ import spray.httpx.unmarshalling._
 
 import org.jsoup.Jsoup
 
-class Remambo extends Service with Sniper /*with Buyer*/ {
+class Remambo(username: String, password: String) extends Service(username, password) with Sniper /*with Buyer*/ {
   private val url = "https://www.remambo.jp"
   implicit private val actorSystem = ActorSystem("forPipeline")
   private val userAgent =
@@ -36,6 +35,10 @@ class Remambo extends Service with Sniper /*with Buyer*/ {
     */
   private def uri(implicit endpoint: Uri) = Uri(url + "/" + endpoint)
 
+  private val headers = List(`Accept-Encoding`(gzip), `User-Agent`(userAgent))
+
+  private def authHeaders(implicit unwrap: CookieWrapper) = Cookie(unwrap.cookies) :: headers
+
   /**
     * Gzip encode a request, send it, and decode the response
     */
@@ -49,16 +52,15 @@ class Remambo extends Service with Sniper /*with Buyer*/ {
     newPipeline(request)
   }
 
-  override def authenticate(implicit credentials: Credentials): Future[Try[CookieWrapper]] = {
+  override def authenticate: Future[Try[CookieWrapper]] = {
     implicit val endpoint: Uri = "auth"
 
     implicit val request =
-      (Post(uri,
+      Post(uri,
         FormData(Map(
-          "set_login" -> credentials.username,
-          "set_pass" -> credentials.password))
-      ) ~> addHeader(`Accept-Encoding`(gzip))
-        ~> addHeader(`User-Agent`(userAgent)))
+          "set_login" -> username,
+          "set_pass" -> password))
+      ) ~> addHeaders(headers)
 
     requestToResponse map {
       case response =>
@@ -71,7 +73,7 @@ class Remambo extends Service with Sniper /*with Buyer*/ {
     }
   }
 
-  override def bid(auction_id: String, offer: Short)(implicit credentials: Credentials): Future[Try[Boolean]] =
+  override def bid(auction_id: String, offer: Short): Future[Try[Boolean]] =
     authenticate recoverWith { case NonFatal(_) => authenticate
     } flatMap {
       case Success(cookies: CookieWrapper) =>
@@ -103,15 +105,13 @@ class Remambo extends Service with Sniper /*with Buyer*/ {
     implicit val endpoint: Uri = "auction/bid_preview"
 
     implicit val request =
-      (Post(uri,
+      Post(uri,
         FormData(Map(
           "user_rate" -> offer.toString,
           "lot_no" -> auction_id,
           "quantity" -> 1.toString,
           "submit_button" -> "Place bid"))
-      ) ~> addHeader(`Accept-Encoding`(gzip))
-        ~> addHeader(Cookie(unwrap.cookies))
-        ~> addHeader(`User-Agent`(userAgent)))
+      ) ~> addHeaders(authHeaders)
 
     requestToToken map {
       case token => token
@@ -131,7 +131,7 @@ class Remambo extends Service with Sniper /*with Buyer*/ {
     implicit val endpoint: Uri = "auction/bid_place"
 
     implicit val request =
-      (Post(uri,
+      Post(uri,
         FormData(Map(
           "user_rate" -> offer.toString,
           "lot_no" -> auction_id,
@@ -139,9 +139,7 @@ class Remambo extends Service with Sniper /*with Buyer*/ {
           "token" -> token.value,
           "signature" -> token.signature,
           "make" -> "Confirm Bid"))
-      ) ~> addHeader(`Accept-Encoding`(gzip))
-        ~> addHeader(Cookie(unwrap.cookies))
-        ~> addHeader(`User-Agent`(userAgent)))
+      ) ~> addHeaders(authHeaders)
 
     requestToResponse flatMap {
       case response =>
@@ -176,11 +174,7 @@ class Remambo extends Service with Sniper /*with Buyer*/ {
         "token" -> token.value,
         "signature" -> token.signature))
 
-    implicit val request =
-      (Get(uri)
-        ~> addHeader(`Accept-Encoding`(gzip))
-        ~> addHeader(Cookie(unwrap.cookies))
-        ~> addHeader(`User-Agent`(userAgent)))
+    implicit val request = Get(uri) ~> addHeaders(authHeaders)
 
     requestToResponse map {
       case response =>

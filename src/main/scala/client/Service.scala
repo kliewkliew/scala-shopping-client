@@ -12,22 +12,14 @@ import scala.util.control.NonFatal
 protected abstract class Cookie
 
 /**
-  * Authentication details
-  * @param username
-  * @param password
-  */
-case class Credentials (username: String, password: String)
-
-/**
   * Deputy service
   */
-abstract class Service {
+abstract class Service (username: String, password: String) {
   /**
     * Authenticate with Service
-    * @param credentials
     * @return A Cookie used for subsequent requests
     */
-  protected def authenticate(implicit credentials: Credentials): Future[Try[Cookie]]
+  protected def authenticate: Future[Try[Cookie]]
 }
 
 trait Bidder extends Service {
@@ -36,7 +28,7 @@ trait Bidder extends Service {
     * @param auction_id
     * @return 0 for success
     */
-  def bid(auction_id: String, offer: Short)(implicit credentials: Credentials): Future[Try[Boolean]]
+  def bid(auction_id: String, offer: Short): Future[Try[Boolean]]
 }
 
 trait Sniper extends Bidder {
@@ -45,7 +37,7 @@ trait Sniper extends Bidder {
     * @param auction_id
     * @return 0 for success
     */
-  def snipe(auction_id: String, offer: Short)(implicit credentials: Credentials): Future[Try[Boolean]] =
+  def snipe(auction_id: String, offer: Short): Future[Try[Boolean]] =
     authenticate recoverWith { case NonFatal(_) => authenticate
     } flatMap {
       case Success(cookies: Cookie) =>
@@ -71,8 +63,8 @@ object Service {
     * @param provider Service name
     * @return Service client instance
     */
-  def apply(provider: String) =
+  def apply(provider: String, username: String, password: String) =
     provider.toLowerCase match {
-      case "remambo" => new Remambo
+      case "remambo" => new Remambo(username, password)
     }
 }
