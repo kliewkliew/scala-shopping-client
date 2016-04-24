@@ -1,7 +1,9 @@
 package client
 
 import Token._
+import org.jsoup.nodes.Element
 
+import scala.annotation.tailrec
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.language.implicitConversions
@@ -82,13 +84,16 @@ class Remambo(username: String, password: String) extends Service(username, pass
         bidPreview(auction_id, offer) recoverWith { case NonFatal(_) => bidPreview(auction_id, offer)
         } flatMap {
           case Success(token: Token) =>
-            bidPlace(auction_id, offer, token) recoverWith {
-              case NonFatal(_) => bidPlace(auction_id, offer, token)
+            bidPlace(auction_id, offer, token) recoverWith {case NonFatal(_) => bidPlace(auction_id, offer, token)
+            } flatMap {
+              case Success(token2) =>
+                bidPlace2(auction_id, offer, token2) recoverWith { case NonFatal(_) => bidPlace2(auction_id, offer, token2)}
+              case Failure(error) =>
+                Future.failed(error)
             }
           case Failure(error) =>
             Future.failed(error)
         }
-
       case Failure(error) =>
         Future.failed(error)
     }
@@ -125,9 +130,9 @@ class Remambo(username: String, password: String) extends Service(username, pass
     * @param offer Price offer
     * @param token Token used to validate a bid
     * @param unwrap Session cookies wrapped in a case class because Try cannot distinguish between different types of List
-    * @return 0 on success
+    * @return true on success
     */
-  private def bidPlace(auction_id: String, offer: Short, token: Token)(implicit unwrap: CookieWrapper): Future[Try[Boolean]] = {
+  private def bidPlace(auction_id: String, offer: Short, token: Token)(implicit unwrap: CookieWrapper): Future[Try[Token]] = {
     implicit val endpoint: Uri = "auction/bid_place"
 
     implicit val request =
@@ -141,16 +146,8 @@ class Remambo(username: String, password: String) extends Service(username, pass
           "make" -> "Confirm Bid"))
       ) ~> addHeaders(authHeaders)
 
-    requestToResponse flatMap {
-      case response =>
-        val tryToken = claimToken(response)
-
-        tryToken match {
-          case Success(newToken) =>
-            bidPlace2(auction_id, offer, newToken)
-          case Failure(error) =>
-            Future.failed(error)
-        }
+    requestToResponse map {
+      case response => claimToken(response)
     }
   }
 
@@ -161,7 +158,7 @@ class Remambo(username: String, password: String) extends Service(username, pass
     * @param offer Price offer
     * @param token Token used to validate a bid
     * @param unwrap Session cookies wrapped in a case class because Try cannot distinguish between different types of List
-    * @return 0 on success
+    * @return true on success
     */
   private def bidPlace2(auction_id: String, offer: Short, token: Token)(implicit unwrap: CookieWrapper): Future[Try[Boolean]] = {
     val endpoint: Uri = "modules/yahoo_auction/data_request/rate.php"
@@ -176,11 +173,48 @@ class Remambo(username: String, password: String) extends Service(username, pass
 
     implicit val request = Get(uri) ~> addHeaders(authHeaders)
 
+    requestToResponse flatMap  {
+      case response => confirmBid(auction_id)
+    }
+  }
+
+  /**
+    * Confirm a bid
+    *
+    * @param auction_id
+    * @param unwrap Session cookies wrapped in a case class because Try cannot distinguish between different types of List
+    * @return true if you are winning the auction
+    */
+  private def confirmBid(auction_id: String)(implicit unwrap: CookieWrapper): Future[Try[Boolean]] = {
+    implicit val endpoint: Uri = "auction/item/" + auction_id
+
+    implicit val request = Get(uri) ~> addHeaders(authHeaders)
+
     requestToResponse map {
       case response =>
-        // TODO: verify bid and bidder, and was not outbid
-        Success(true)
+        val root = Jsoup.parse(response.entity.asString)
+        val auc_info = root.select("div[id=auc_info]").select("table").select("tr")
+
+        if (auc_info.isEmpty)
+          Failure(new IllegalStateException("Failed to confirm bid"))
+        else
+          Success(findAuctionInfo(auc_info.first, "Highest Bidder") == "You")
     }
+  }
+
+  /**
+    * Find the table row with the desired header
+    * We cannot use Scala collections in JSoup so lets use tail recursion because it is more functional
+    *
+    * @param currentRow Next table row to be checked
+    * @param desiredHeader The row header to search for
+    * @return The value associated with desiredHeader
+    */
+  @tailrec private def findAuctionInfo(currentRow: Element, desiredHeader: String): String = {
+    if (currentRow.select("td[class=rightHeader skiptranslate]").text.contains(desiredHeader))
+      currentRow.select("td[class=skiptranslate]").text
+    else
+      findAuctionInfo(currentRow.nextElementSibling, desiredHeader)
   }
 }
 
@@ -224,6 +258,7 @@ object Token {
 
   /**
     * Extract the Token from the bid_place HTML page
+    *
     * @param httpResponse
     * @return A Token
     */

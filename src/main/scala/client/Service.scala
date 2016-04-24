@@ -26,7 +26,7 @@ trait Bidder extends Service {
   /**
     * Authenticate with Service and bid on an auction
     * @param auction_id
-    * @return 0 for success
+    * @return true on success
     */
   def bid(auction_id: String, offer: Short): Future[Try[Boolean]]
 }
@@ -35,7 +35,7 @@ trait Sniper extends Bidder {
   /**
     * Validate credentials and schedule a bid
     * @param auction_id
-    * @return 0 for success
+    * @return true on success
     */
   def snipe(auction_id: String, offer: Short): Future[Try[Boolean]] =
     authenticate recoverWith { case NonFatal(_) => authenticate
