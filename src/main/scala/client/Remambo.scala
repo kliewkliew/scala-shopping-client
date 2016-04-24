@@ -119,13 +119,13 @@ class Remambo extends Service with Sniper /*with Buyer*/ {
   }
 
   /**
-    * Place a bid
+    * Get the second confirmation Token to place a bid
     *
     * @param auction_id
     * @param offer Price offer
     * @param token Token used to validate a bid
     * @param unwrap Session cookies wrapped in a case class because Try cannot distinguish between different types of List
-    * @return
+    * @return 0 on success
     */
   private def bidPlace(auction_id: String, offer: Short, token: Token)(implicit unwrap: CookieWrapper): Future[Try[Boolean]] = {
     implicit val endpoint: Uri = "auction/bid_place"
@@ -156,20 +156,29 @@ class Remambo extends Service with Sniper /*with Buyer*/ {
     }
   }
 
+  /**
+    * Place a bid
+    *
+    * @param auction_id
+    * @param offer Price offer
+    * @param token Token used to validate a bid
+    * @param unwrap Session cookies wrapped in a case class because Try cannot distinguish between different types of List
+    * @return 0 on success
+    */
   private def bidPlace2(auction_id: String, offer: Short, token: Token)(implicit unwrap: CookieWrapper): Future[Try[Boolean]] = {
-    implicit val endpoint: Uri = "modules/yahoo_auction/data_request/rate.php?"
+    val endpoint: Uri = "modules/yahoo_auction/data_request/rate.php"
+
+    implicit val finalEndpoint: Uri =
+      endpoint.withQuery(Map(
+        "user_rate" -> offer.toString,
+        "lot_no" -> auction_id,
+        "quantity" -> 1.toString,
+        "token" -> token.value,
+        "signature" -> token.signature))
 
     implicit val request =
-      (Get(uri,
-        FormData(Map(
-          "user_rate" -> offer.toString,
-          "lot_no" -> auction_id,
-          "quantity" -> 1.toString,
-          "token" -> token.value,
-          "signature" -> token.signature,
-          "comments" -> "",
-          "deliveryType" -> "0"))
-      ) ~> addHeader(`Accept-Encoding`(gzip))
+      (Get(uri)
+        ~> addHeader(`Accept-Encoding`(gzip))
         ~> addHeader(Cookie(unwrap.cookies))
         ~> addHeader(`User-Agent`(userAgent)))
 
@@ -225,7 +234,7 @@ object Token {
     * @return A Token
     */
   def claimToken(httpResponse: HttpResponse): Try[Token] = {
-    //ie. var script_url = "/modules/yahoo_auction/data_request/rate.php?token=5709f3949645a&signature=87922fb277d1a987546b09f704b441aa1fde980d";
+    //ie. 'var script_url = "/modules/yahoo_auction/data_request/rate.php?token=5709f3949645a&signature=87922fb277d1a987546b09f704b441aa1fde980d";'
     val script_url = httpResponse.entity.asString.split("\n").find{_.contains("script_url")}
 
     if (script_url.isEmpty) Failure(new IllegalStateException("Failed to get bidding token"))
