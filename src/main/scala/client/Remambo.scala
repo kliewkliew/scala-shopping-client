@@ -12,7 +12,6 @@ import akka.actor.ActorSystem
 
 import spray.client.pipelining._
 import spray.http._
-import spray.http.HttpHeaders.`Set-Cookie`
 import spray.http.MediaTypes.`text/html`
 import spray.httpx.unmarshalling.Unmarshaller
 
@@ -23,7 +22,7 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
   extends Service(username, password) with YahooJapanAuctions /*with YahooJapanShopping*/ {
   implicit private val url: Uri = "https://www.remambo.jp"
 
-  private def requestToToken(implicit request: HttpRequest): Future[Try[Token]] = {
+  private def requestToken(implicit request: HttpRequest): Future[Try[Token]] = {
     implicit val tokenUnmarshaller = TokenUnmarshaller
     val newPipeline = gzipPipeline ~> unmarshal[Try[Token]]
     newPipeline(request)
@@ -39,15 +38,8 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
           "set_pass" -> password))
       ) ~> addHeaders(headers)
 
-    requestToResponse map {
-      case response =>
-        //TODO: create CookiesUnmarshaller and pipeline
-        val cookies = response.headers.collect{ case `Set-Cookie`(cookie) => cookie }
-
-        if (cookies.nonEmpty)
-          Success(Cookies(cookies))
-        else
-          Failure(new IllegalStateException("Failed to authenticate"))
+    requestAuthentication map {
+      case tryCookies => tryCookies
     }
   }
 
@@ -57,7 +49,7 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
         implicit val implCookies = cookies
 
         bidPreview(auction_id, offer) flatMap {
-          case Success(token: Token) =>
+          case Success(token) =>
             bidPlace(auction_id, offer, token) flatMap {
               case Success(token2) =>
                 bidPlace2(auction_id, offer, token2)
@@ -91,7 +83,7 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
           "submit_button" -> "Place bid"))
       ) ~> addHeaders(authHeaders)
 
-    requestToToken map {
+    requestToken map {
       case token => token
     }
   }
@@ -153,8 +145,8 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
 
   override def confirmBid(auction_id: String)(implicit cookies: Cookies): Future[Try[Boolean]] = {
     findAuctionInfo(auction_id, "Highest Bidder") map {
-      case Success(higherBidder) =>
-        Success(higherBidder == "You")
+      case Success(highestBidder) =>
+        Success(highestBidder == "You")
       case Failure(error) =>
         Failure(error)
     }
@@ -253,7 +245,7 @@ object Token {
     //ie. 'var script_url = "/modules/yahoo_auction/data_request/rate.php?token=5709f3949645a&signature=87922fb277d1a987546b09f704b441aa1fde980d";'
     val script_url = httpResponse.entity.asString.split("\n").find{_.contains("script_url")}
 
-    if (script_url.isEmpty) Failure(new IllegalStateException("Failed to get bidding token"))
+    if (script_url.isEmpty) return Failure(new IllegalStateException("Failed to get bidding token"))
 
     val uri: Uri = script_url.get.split("\"")(1)
 

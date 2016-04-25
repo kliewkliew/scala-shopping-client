@@ -1,11 +1,13 @@
 package client
 
 import akka.actor.ActorSystem
+
 import spray.client.pipelining._
 import spray.http.HttpEncodings.gzip
-import spray.http.HttpHeaders.{Cookie, `User-Agent`, `Accept-Encoding`}
-import spray.http.{HttpCookie, HttpResponse, HttpRequest, Uri}
+import spray.http.HttpHeaders.{`Set-Cookie`, Cookie, `User-Agent`, `Accept-Encoding`}
+import spray.http._
 import spray.httpx.encoding.Gzip
+import spray.httpx.unmarshalling.{MalformedContent, Deserialized, FromResponseUnmarshaller}
 
 import scala.concurrent.duration._
 import scala.concurrent.Future
@@ -40,6 +42,7 @@ trait Bidder extends Service {
     * Authenticate with Service and bid on an auction
     *
     * @param auction_id
+    * @param offer Bidding price. Currency is dependant on the service
     * @return true on success
     */
   def bid(auction_id: String, offer: Short): Future[Try[Boolean]]
@@ -59,6 +62,7 @@ trait Sniper extends Bidder {
     * Validate credentials and schedule a bid for 120 seconds before the auction ends
     *
     * @param auction_id
+    * @param offer Bidding price. Currency is dependant on the service
     * @return true on success
     */
   def snipe(auction_id: String, offer: Short) =
@@ -94,6 +98,8 @@ trait Buyer extends Service {
 }
 
 object Service {
+  implicit val actorSystem = ActorSystem("main")
+
   /**
     * Service client Factory
     *
@@ -102,10 +108,8 @@ object Service {
     */
   def apply(provider: String, username: String, password: String) =
     provider.toLowerCase match {
-      case "remambo" => new Remambo(username, password)
+      case "remambo"  => new Remambo(username, password)
     }
-
-  implicit val actorSystem = ActorSystem("main")
 
   private[client] val userAgent =
     "Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
@@ -130,4 +134,26 @@ object Service {
   private[client] val gzipPipeline: HttpRequest => Future[HttpResponse] = sendReceive ~> decode(Gzip)
 
   private[client] def requestToResponse(implicit request: HttpRequest): Future[HttpResponse] = gzipPipeline(request)
+
+  private[client] def requestAuthentication(implicit request: HttpRequest): Future[Try[Cookies]] = {
+    implicit val tokenUnmarshaller = CookiesUnmarshaller
+    val newPipeline = gzipPipeline ~> unmarshal[Try[Cookies]]
+    newPipeline(request)
+  }
+
+  /**
+    * Unmarshal Cookies from the authentication headers
+    *
+    * @return Cookies
+    */
+  private val CookiesUnmarshaller = new FromResponseUnmarshaller[Try[Cookies]] {
+    def apply(httpResponse: HttpResponse): Deserialized[Try[Cookies]] = {
+      val cookies = httpResponse.headers.collect { case `Set-Cookie`(cookie) => cookie }
+
+      if (cookies.nonEmpty)
+        Right(Success(Cookies(cookies)))
+      else
+        Left(MalformedContent("Failed to authenticate", new IllegalStateException("Failed to authenticate")))
+    }
+  }
 }
