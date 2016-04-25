@@ -5,6 +5,6 @@ object Application {
 
     val remambo = Service("Remambo", args(0), args(1))
 
-    remambo.bid(args(2), args(3).toShort)
+    remambo.snipe(args(2), args(3).toShort)
   }
 }

@@ -10,12 +10,12 @@ import spray.client.pipelining._
 import spray.http._
 
 import scala.concurrent.Future
-import scala.util.Try
+import scala.util.{Try, Success, Failure}
 
 trait YahooJapanAuctions extends Sniper {
   implicit private val url: Uri = "http://page2.auctions.yahoo.co.jp"
 
-  override def timeLeft(auction_id: String): Future[Int] = {
+  override def timeLeft(auction_id: String): Future[Try[Int]] = {
     val endpoint: Uri = "now"
 
     val finalEndpoint: Uri =
@@ -26,7 +26,13 @@ trait YahooJapanAuctions extends Sniper {
     implicit val request = Get(uri(endpoint)) ~> addHeaders(headers)
 
     requestToResponse map  {
-      case response => response.entity.asString.toShort
+      case response =>
+        try {
+          Success(response.entity.asString.toInt) // toInt throws exception
+        }
+        catch {
+          case e: Exception => Failure(e)
+        }
     }
   }
 

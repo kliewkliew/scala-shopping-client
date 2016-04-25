@@ -36,7 +36,7 @@ abstract class Service (username: String, password: String) {
   protected def authenticate: Future[Try[Cookies]]
 }
 
-// TODO: implement automatic retry in `bid`; refactor `bid` to `bidInternal`
+// TODO: implement automatic retry in `bid`; refactor existing `bid` to `bidInternal`
 trait Bidder extends Service {
   /**
     * Authenticate with Service and bid on an auction
@@ -58,6 +58,7 @@ trait Bidder extends Service {
 }
 
 trait Sniper extends Bidder {
+  //TODO: take actorRef or lambda/callback param to execute when the bid executes
   /**
     * Validate credentials and schedule a bid for 120 seconds before the auction ends
     *
@@ -70,9 +71,9 @@ trait Sniper extends Bidder {
       case Success(cookies: Cookies) =>
         timeLeft(auction_id) map {
           case time =>
-          Service.actorSystem.scheduler.scheduleOnce((time - 120).seconds) {
-            bid(auction_id, offer)
-          }
+            Service.actorSystem.scheduler.scheduleOnce((time.getOrElse(120) - 120).seconds) {
+              bid(auction_id, offer)
+            }
         }
 
       case Failure(error) =>
@@ -85,7 +86,7 @@ trait Sniper extends Bidder {
     * @param auction_id
     * @return Number of seconds
     */
-  def timeLeft(auction_id: String): Future[Int]
+  def timeLeft(auction_id: String): Future[Try[Int]]
 }
 
 trait Buyer extends Service {
@@ -108,6 +109,7 @@ object Service {
     */
   def apply(provider: String, username: String, password: String) =
     provider.toLowerCase match {
+      case "ebay"     => new Ebay(username, password)
       case "remambo"  => new Remambo(username, password)
     }
 

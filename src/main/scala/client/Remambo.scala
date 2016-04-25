@@ -143,23 +143,21 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
     }
   }
 
-  override def confirmBid(auction_id: String)(implicit cookies: Cookies): Future[Try[Boolean]] = {
+  override def confirmBid(auction_id: String)(implicit cookies: Cookies): Future[Try[Boolean]] =
     findAuctionInfo(auction_id, "Highest Bidder") map {
       case Success(highestBidder) =>
         Success(highestBidder == "You")
       case Failure(error) =>
         Failure(error)
     }
-  }
 
-  override def getMinimumIncrement(auction_id: String)(implicit cookies: Cookies): Future[Try[Short]] = {
+  override def getMinimumIncrement(auction_id: String)(implicit cookies: Cookies): Future[Try[Short]] =
     findAuctionInfo(auction_id, "Bid Step") map {
       case Success(increment) =>
         Success(increment.toShort)
       case Failure(error) =>
         Failure(error)
     }
-  }
 
   /**
     * Find the table row cell value with the desired header (on the Remambo item page)
@@ -194,14 +192,13 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
     * @param desiredHeader The row header to search for
     * @return The cell value associated with desiredHeader
     */
-  @tailrec private def findAuctionInfoRow(currentRow: Element, desiredHeader: String): Try[String] = {
+  @tailrec private def findAuctionInfoRow(currentRow: Element, desiredHeader: String): Try[String] =
     if (currentRow.nextElementSibling() == null)
       Failure(new IllegalStateException("Failed to find " + desiredHeader + " row"))
     else if (currentRow.select("td[class=rightHeader skiptranslate]").text.contains(desiredHeader))
       Success(currentRow.select("td[class=skiptranslate]").text)
     else
       findAuctionInfoRow(currentRow.nextElementSibling, desiredHeader)
-  }
 }
 
 /**
