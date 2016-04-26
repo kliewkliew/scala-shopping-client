@@ -72,12 +72,12 @@ class Ebay(username: String, password: String)(implicit actorSystem: ActorSystem
     implicit val request = Get(endpoint) ~> addHeaders(authHeaders)
 
     requestUiid map {
-      case token => token
+      case uiid => uiid
     }
   }
 
   /**
-    * Get the second confirmation Token to place a bid
+    * Place a bid
     *
     * @param auction_id
     * @param offer Price offer

@@ -58,7 +58,7 @@ trait Bidder extends Service {
 }
 
 trait Sniper extends Bidder {
-  //TODO: take actorRef or lambda/callback param to execute when the bid executes
+  //TODO: take actorRef or lambda/callback param to execute when the bid Future returns
   /**
     * Validate credentials and schedule a bid for 120 seconds before the auction ends
     *

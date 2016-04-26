@@ -154,7 +154,12 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
   override def getMinimumIncrement(auction_id: String)(implicit cookies: Cookies): Future[Try[Short]] =
     findAuctionInfo(auction_id, "Bid Step") map {
       case Success(increment) =>
-        Success(increment.toShort)
+        try {
+          Success(increment.toShort) // toShort throws exception
+        }
+        catch {
+          case e: Exception => Failure(e)
+        }
       case Failure(error) =>
         Failure(error)
     }
