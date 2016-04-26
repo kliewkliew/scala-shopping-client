@@ -1,4 +1,4 @@
-name := "deputy-service-sniper"
+name := "scala-shopping-client"
 
 version := "1.0"
 
