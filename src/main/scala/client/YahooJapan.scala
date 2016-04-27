@@ -23,7 +23,7 @@ trait YahooJapanAuctions extends Sniper {
         "aID" -> auction_id,
         "nowtime" -> new Date().getTime.toString))
 
-    implicit val request = Get(uri(endpoint)) ~> addHeaders(headers)
+    implicit val request = Get(uri(finalEndpoint)) ~> addHeaders(headers)
 
     requestToResponse map  {
       case response =>
