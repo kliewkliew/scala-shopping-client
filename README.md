@@ -14,6 +14,7 @@ If you would like to register, you can use my affiliate link :)
 ## Clients
 ###eBay
 WIP, will be tested when I find something to buy :)
+
 APIs in "eBay developers program" do not provide bidding functionality, so I reverse-engineered the website's REST API.
 
 ###Remambo (for Yahoo! Japan Auctions; eventually for Yahoo! Japan Shopping and Rakuten)
