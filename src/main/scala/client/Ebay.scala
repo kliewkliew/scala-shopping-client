@@ -151,6 +151,26 @@ class Ebay(username: String, password: String)(implicit actorSystem: ActorSystem
         Future.failed(error)
     }
 
+  /**
+    * Extract the UUID from the item page
+    *
+    * @return A UIID
+    */
+  implicit val UuidUnmarshaller =
+    Unmarshaller[Try[UIID]](`text/html`) {
+      case HttpEntity.NonEmpty(contentType, data) =>
+        val line = data.asString.split("\n").find(_.substring(0, 8) == "$rwidgets")
+
+        val uiid =
+          new Regex("""uiid=-?\d+""").findFirstIn(line.getOrElse(""))
+            .getOrElse("").replaceAll("uiid=", "")
+
+        if(uiid.nonEmpty)
+          Success(uiid)
+        else
+          Failure(new IllegalStateException("Failed to get UIID"))
+    }
+
   private def requestUiid(implicit request: HttpRequest): Future[Try[UIID]] = {
     val newPipeline = gzipPipeline ~> unmarshal[Try[UIID]]
     newPipeline(request)
@@ -188,23 +208,4 @@ class Ebay(username: String, password: String)(implicit actorSystem: ActorSystem
     }
   }
 
-  /**
-    * Extract the UUID from the item page
-    *
-    * @return A UIID
-    */
-  implicit val UuidUnmarshaller =
-    Unmarshaller[Try[UIID]](`text/html`) {
-      case HttpEntity.NonEmpty(contentType, data) =>
-        val line = data.asString.split("\n").find(_.substring(0, 8) == "$rwidgets")
-
-        val uiid =
-          new Regex("""uiid=-?\d+""").findFirstIn(line.getOrElse(""))
-            .getOrElse("").replaceAll("uiid=", "")
-
-        if(uiid.nonEmpty)
-          Success(uiid)
-        else
-          Failure(new IllegalStateException("Failed to get UIID"))
-    }
-}
+  }
