@@ -18,8 +18,8 @@ import spray.httpx.unmarshalling.Unmarshaller
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
-class Remambo(username: String, password: String)(implicit actorSystem: ActorSystem)
-  extends Service(username, password) with YahooJapanAuctions /*with YahooJapanShopping*/ {
+case class Remambo(username: String, password: String)(implicit actorSystem: ActorSystem)
+  extends Service(username, password) with YahooJapanAuctions /*with YahooJapanShopping*/ with Rakuten {
   implicit private val url: Uri = "https://www.remambo.jp"
 
   private def requestToken(implicit request: HttpRequest): Future[Try[Token]] = {
@@ -38,12 +38,10 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
           "set_pass" -> password))
       ) ~> addHeaders(headers)
 
-    requestAuthentication map {
-      case tryCookies => tryCookies
-    }
+    requestAuthentication
   }
 
-  override def bid(auction_id: String, offer: Short): Future[Try[Boolean]] =
+  override def bid(auction_id: String, offer: Int): Future[Try[Boolean]] =
     authenticate flatMap {
       case Success(cookies) =>
         implicit val implCookies = cookies
@@ -71,7 +69,7 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
     * @param cookies Session cookies
     * @return The token and signature
     */
-  private def bidPreview(auction_id: String, offer: Short)(implicit cookies: Cookies): Future[Try[Token]] = {
+  private def bidPreview(auction_id: String, offer: Int)(implicit cookies: Cookies): Future[Try[Token]] = {
     val endpoint: Uri = "auction/bid_preview"
 
     implicit val request =
@@ -83,9 +81,7 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
           "submit_button" -> "Place bid"))
       ) ~> addHeaders(authHeaders)
 
-    requestToken map {
-      case token => token
-    }
+    requestToken
   }
 
   /**
@@ -97,7 +93,7 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
     * @param cookies Session cookies
     * @return true on success
     */
-  private def bidPlace(auction_id: String, offer: Short, token: Token)(implicit cookies: Cookies): Future[Try[Token]] = {
+  private def bidPlace(auction_id: String, offer: Int, token: Token)(implicit cookies: Cookies): Future[Try[Token]] = {
     val endpoint: Uri = "auction/bid_place"
 
     implicit val request =
@@ -112,7 +108,7 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
       ) ~> addHeaders(authHeaders)
 
     requestToResponse map {
-      case response => claimToken(response)
+      response => claimToken(response)
     }
   }
 
@@ -125,7 +121,7 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
     * @param cookies Session cookies
     * @return true on success
     */
-  private def bidPlace2(auction_id: String, offer: Short, token: Token)(implicit cookies: Cookies): Future[Try[Boolean]] = {
+  private def bidPlace2(auction_id: String, offer: Int, token: Token)(implicit cookies: Cookies): Future[Try[Boolean]] = {
     val endpoint: Uri = "modules/yahoo_auction/data_request/rate.php"
 
     val finalEndpoint: Uri =
@@ -139,7 +135,7 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
     implicit val request = Get(uri(finalEndpoint)) ~> addHeaders(authHeaders)
 
     requestToResponse flatMap {
-      case response => confirmBid(auction_id)
+      response => confirmBid(auction_id)
     }
   }
 
@@ -178,7 +174,7 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
     implicit val request = Get(uri(endpoint)) ~> addHeaders(authHeaders)
 
     requestToResponse map {
-      case response =>
+      response =>
         val root = Jsoup.parse(response.entity.asString)
         val auc_info = root.select("div[id=auc_info]").select("table").select("tr")
 
@@ -204,6 +200,39 @@ class Remambo(username: String, password: String)(implicit actorSystem: ActorSys
       Success(currentRow.select("td[class=skiptranslate]").text)
     else
       findAuctionInfoRow(currentRow.nextElementSibling, desiredHeader)
+
+  override protected def buyRakutenInternal(item_url: Uri, price: Int) =
+    authenticate flatMap {
+      case Success(cookies) =>
+        implicit val implCookies = cookies
+
+        val endpoint: Uri = "https://www.remambo.jp/shoppingcart"
+
+        val finalEndpoint: Uri =
+          endpoint.withQuery(Map(
+            "title" -> item_url.toString, //TODO
+            "url" -> item_url.toString,
+            "price" -> price.toString,
+            "shipping" -> "500",
+            "step_2" -> "1",
+            "payment_method" -> "1",
+            "qty" -> "1"))
+
+        implicit val request = Get(uri(finalEndpoint)) ~> addHeaders(authHeaders)
+
+        requestToResponse map { response =>
+          try {
+            val root = Jsoup.parse(response.entity.asString)
+            val resultText = root.select("body").select("div[id=wrapper]").select("div[id=content]").select("span").text()
+            Success(resultText.contains("Your order is accepted"))
+          }
+          catch {
+            case e: Exception => Failure(e)
+          }
+        }
+      case Failure(error) =>
+        Future.failed(error)
+    }
 }
 
 /**

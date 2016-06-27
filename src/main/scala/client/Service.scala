@@ -45,7 +45,7 @@ trait Bidder extends Service {
     * @param offer Bidding price. Currency is dependant on the service
     * @return true on success
     */
-  def bid(auction_id: String, offer: Short): Future[Try[Boolean]]
+  def bid(auction_id: String, offer: Int): Future[Try[Boolean]]
 
   /**
     * Confirm a bid
@@ -66,11 +66,11 @@ trait Sniper extends Bidder {
     * @param offer Bidding price. Currency is dependant on the service
     * @return true on success
     */
-  def snipe(auction_id: String, offer: Short) =
+  def snipe(auction_id: String, offer: Int) =
     authenticate map {
       case Success(cookies: Cookies) =>
         timeLeft(auction_id) map {
-          case time =>
+          time =>
             Service.actorSystem.scheduler.scheduleOnce((time.getOrElse(120) - 120).seconds) {
               bid(auction_id, offer)
             }
@@ -87,15 +87,6 @@ trait Sniper extends Bidder {
     * @return Number of seconds
     */
   def timeLeft(auction_id: String): Future[Try[Int]]
-}
-
-trait Buyer extends Service {
-  /**
-    * Buy a lot
-    *
-    * @param lot_id
-    */
-  def buy(lot_id: String)
 }
 
 object Service {
@@ -120,9 +111,9 @@ object Service {
   /**
     * Construct the URI
     *
-    * @param endpoint
-    * @param url
-    * @return
+    * @param endpoint Endpoint relative to the base url
+    * @param url Base url
+    * @return Unique resource identifier
     */
   def uri(endpoint: Uri)(implicit url: Uri) = Uri(url + "/" + endpoint)
 

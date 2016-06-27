@@ -25,8 +25,8 @@ trait YahooJapanAuctions extends Sniper {
 
     implicit val request = Get(uri(finalEndpoint)) ~> addHeaders(headers)
 
-    requestToResponse map  {
-      case response =>
+    requestToResponse map {
+      response =>
         try {
           Success(response.entity.asString.toInt) // toInt throws exception
         }
@@ -42,7 +42,7 @@ trait YahooJapanAuctions extends Sniper {
     * @param auction_id
     * @param offer
     */
-  def incrementalSnipe(auction_id: String, offer: Short) = {
+  def incrementalSnipe(auction_id: String, offer: Int) = {
     // TODO
   }
 
@@ -57,14 +57,10 @@ trait YahooJapanAuctions extends Sniper {
   def getMinimumIncrement(auction_id: String)(implicit cookies: Cookies): Future[Try[Short]]
 }
 
-trait YahooJapanShopping extends Buyer {
+trait YahooJapanShopping {
   implicit private val url: Uri = "http://store.shopping.yahoo.co.jp"
-  override def buy(lot_id: String) = {
-    // TODO
-  }
-
   /**
-    * A separate buy so that we can have a client mixin both YahooJapanShopping and Rakuten (which both extend Buyer)
+    * Buy a lot
     *
     * @param lot_id
     */

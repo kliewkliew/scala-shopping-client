@@ -22,7 +22,7 @@ import spray.json._
   * @param password
   * @param actorSystem For Spray pipelining
   */
-class Ebay(username: String, password: String)(implicit actorSystem: ActorSystem)
+case class Ebay(username: String, password: String)(implicit actorSystem: ActorSystem)
   extends Service(username, password) with Sniper /*with Buyer*/ {
 
   // Unique item identifier
@@ -44,7 +44,7 @@ class Ebay(username: String, password: String)(implicit actorSystem: ActorSystem
     }
   }
 
-  override def bid(auction_id: String, offer: Short): Future[Try[Boolean]] =
+  override def bid(auction_id: String, offer: Int): Future[Try[Boolean]] =
     authenticate flatMap {
       case Success(cookies) =>
         implicit val implCookies = cookies
@@ -85,7 +85,7 @@ class Ebay(username: String, password: String)(implicit actorSystem: ActorSystem
     * @param cookies Session cookies
     * @return true on success
     */
-  private def bidPlace(auction_id: String, offer: Short, uiid: UIID)(implicit cookies: Cookies): Future[Try[Boolean]] = {
+  private def bidPlace(auction_id: String, offer: Int, uiid: UIID)(implicit cookies: Cookies): Future[Try[Boolean]] = {
     val endpoint: Uri = "https://offer.ebay.com/ws/eBayISAPI.dll"
 
     val finalEndpoint =

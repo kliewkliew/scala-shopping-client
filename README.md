@@ -23,4 +23,6 @@ Reverse-engineered REST API.
 An example is available in `Application.scala`.
 
 ## Implementation Details
-Http requests execute asynchronously using `Future`s and the `Spray` framework. Clients are composed of mixin `trait`s. 
+Http requests execute asynchronously using `Future`s and the `Spray` framework.
+Clients are composed of mixin `trait`s.
+Requests are pushed through pipelines and the response is mapped to results.
