@@ -108,7 +108,7 @@ case class Ebay(username: String, password: String)(implicit actorSystem: ActorS
   override def confirmBid(auction_id: String)(implicit cookies: Cookies): Future[Try[Boolean]] =
     findAuctionInfo(auction_id, "ViewerItemRelation") map {
       case Success(bidStatus) =>
-        Success(bidStatus.toString == "HIGHBIDDER")
+        Success(bidStatus.toString.toUpperCase == "HIGHBIDDER")
       case Failure(error) =>
         Failure(new IllegalStateException("Failed to confirm bid"))
     }

@@ -18,35 +18,38 @@ trait Rakuten extends Service {
     * @param item_url
     */
   def buyRakuten(item_url: Uri): Future[Try[Boolean]] = {
-    getPrice(item_url) flatMap {
-      case Success(price) =>
-        buyRakutenInternal(item_url, price)
+    getItemInfo(item_url) flatMap {
+      case Success(itemInfo) =>
+        buyRakutenInternal(itemInfo)
       case Failure(e) =>
         Future.failed(e)
     }
   }
 
   /**
-    * Buy a lot
     *
-    * @param item_url
+    * @param itemInfo
+    * @return
     */
-  protected def buyRakutenInternal(item_url: Uri, price: Int): Future[Try[Boolean]]
+  protected def buyRakutenInternal(itemInfo: ItemInfo): Future[Try[Boolean]]
+
+  case class ItemInfo(name: String, price: Int, url: Uri)
 
   /**
     * Get the price of an item
     * @param item_url
     * @return
     */
-  def getPrice(item_url: Uri): Future[Try[Int]] = {
+  def getItemInfo(item_url: Uri): Future[Try[ItemInfo]] = {
     implicit val request = Get(item_url) ~> addHeaders(headers)
 
     requestToResponse map { response =>
         try {
           val root = Jsoup.parse(response.entity.asString)
+          val name = root.select("body").select("div[id=main_title_waku]").text()
           val price = root.select("body").select("div[id=pagebody]").select("table[id=rakutenLimitedId_cart]")
           .select("span[class=price2]").text().replaceAll("円", "").replaceAll(",", "").toInt
-          Success(price)
+          Success(ItemInfo(name, price, item_url))
         }
         catch {
           case e: Exception => Failure(e)

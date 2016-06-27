@@ -201,7 +201,7 @@ case class Remambo(username: String, password: String)(implicit actorSystem: Act
     else
       findAuctionInfoRow(currentRow.nextElementSibling, desiredHeader)
 
-  override protected def buyRakutenInternal(item_url: Uri, price: Int) =
+  override protected def buyRakutenInternal(itemInfo: ItemInfo) =
     authenticate flatMap {
       case Success(cookies) =>
         implicit val implCookies = cookies
@@ -210,10 +210,10 @@ case class Remambo(username: String, password: String)(implicit actorSystem: Act
 
         val finalEndpoint: Uri =
           endpoint.withQuery(Map(
-            "title" -> item_url.toString, //TODO
-            "url" -> item_url.toString,
-            "price" -> price.toString,
-            "shipping" -> "500",
+            "title" -> itemInfo.name,
+            "url" -> itemInfo.url.toString,
+            "price" -> itemInfo.price.toString,
+            "shipping" -> "0",
             "step_2" -> "1",
             "payment_method" -> "1",
             "qty" -> "1"))
@@ -223,7 +223,7 @@ case class Remambo(username: String, password: String)(implicit actorSystem: Act
         requestToResponse map { response =>
           try {
             val root = Jsoup.parse(response.entity.asString)
-            val resultText = root.select("body").select("div[id=wrapper]").select("div[id=content]").select("span").text()
+            val resultText = root.select("body").text()
             Success(resultText.contains("Your order is accepted"))
           }
           catch {
