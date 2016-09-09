@@ -1,16 +1,16 @@
 package client
 
 import Service._
-
 import java.util.Date
 
-import scala.concurrent.ExecutionContext.Implicits.global
+import org.jsoup.Jsoup
 
 import spray.client.pipelining._
 import spray.http._
 
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
-import scala.util.{Try, Success, Failure}
+import scala.util.{Failure, Success, Try}
 
 trait YahooJapanAuctions extends Sniper {
   implicit private val url: Uri = "http://page2.auctions.yahoo.co.jp"
@@ -57,12 +57,36 @@ trait YahooJapanAuctions extends Sniper {
   def getMinimumIncrement(auction_id: String)(implicit cookies: Cookies): Future[Try[Short]]
 }
 
-trait YahooJapanShopping {
+trait YahooJapanShopping extends Shopper {
   implicit private val url: Uri = "http://store.shopping.yahoo.co.jp"
+
   /**
-    * Buy a lot
+    * Get the price of the item and buy it
     *
-    * @param lot_id
+    * @param item_url
     */
-  def buyYhj(lot_id: String)
+  def buyYhj(item_url: Uri): Future[Try[Boolean]] = {
+    getItemInfo(item_url) flatMap {
+      case Success(itemInfo) =>
+        buy(itemInfo)
+      case Failure(e) =>
+        Future.failed(e)
+    }
+  }
+
+  private def getItemInfo(item_url: Uri): Future[Try[ItemInfo]] = {
+    implicit val request = Get(item_url) ~> addHeaders(headers)
+
+    requestToResponse map { response =>
+      try {
+        val root = Jsoup.parse(response.entity.asString)
+        val name = root.select("title").text()
+        val price = root.select("meta[itemprop=price]").attr("content").toInt
+        Success(ItemInfo(name, price, item_url))
+      }
+      catch {
+        case e: Exception => Failure(e)
+      }
+    }
+  }
 }

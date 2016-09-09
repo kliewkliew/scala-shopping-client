@@ -89,6 +89,23 @@ trait Sniper extends Bidder {
   def timeLeft(auction_id: String): Future[Try[Int]]
 }
 
+/**
+  * Item information used for purchasing
+  * @param name
+  * @param price
+  * @param url
+  */
+case class ItemInfo(name: String, price: Int, url: Uri)
+
+trait Shopper extends Service {
+  /**
+    * Buy something through this deputy
+    * @param itemInfo
+    * @return
+    */
+  protected def buy(itemInfo: ItemInfo): Future[Try[Boolean]]
+}
+
 object Service {
   implicit val actorSystem = ActorSystem("main")
 

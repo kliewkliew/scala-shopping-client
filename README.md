@@ -16,11 +16,12 @@ If you would like to register, you can use my affiliate link :)
 ###eBay
 APIs in "eBay developers program" do not provide bidding functionality, so I reverse-engineered the website's REST API.
 
-###Remambo (for Yahoo! Japan Auctions and Rakuten; eventually for Yahoo! Japan Shopping)
+###Remambo (for Yahoo! Japan Auctions, Yahoo! Japan Shopping, and Rakuten)
 Reverse-engineered REST API.
 
 ## Usage
-An example is available in `Application.scala`.
+Examples are available in the main classes at the scala root directory.
+These can be run from sbt.
 
 ## Implementation Details
 Http requests execute asynchronously using `Future`s and the `Spray` framework.

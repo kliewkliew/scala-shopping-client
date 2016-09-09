@@ -7,10 +7,10 @@ import scala.util.{Failure, Success}
 object Rakuten {
   def main(args: Array[String]): Unit = {
 
-    val (username, password, itemId) = (args(0), args(1), args(2))
+    val (username, password, url) = (args(0), args(1), args(2))
 
     val remambo = Remambo(username, password)
-    remambo.buyRakuten(itemId) map {
+    remambo.buyRakuten(url) map {
       case Success(true) =>
         println("Success")
         sys.exit(0)

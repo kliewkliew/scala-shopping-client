@@ -10,7 +10,7 @@ import scala.util.{Try, Success, Failure}
 import spray.client.pipelining._
 import spray.http.Uri
 
-trait Rakuten extends Service {
+trait Rakuten extends Shopper {
   implicit private val url: Uri = "https://www.rakuten.co.jp"
   /**
     * Get the price of the item and buy it
@@ -20,27 +20,18 @@ trait Rakuten extends Service {
   def buyRakuten(item_url: Uri): Future[Try[Boolean]] = {
     getItemInfo(item_url) flatMap {
       case Success(itemInfo) =>
-        buyRakutenInternal(itemInfo)
+        buy(itemInfo)
       case Failure(e) =>
         Future.failed(e)
     }
   }
 
   /**
-    *
-    * @param itemInfo
-    * @return
-    */
-  protected def buyRakutenInternal(itemInfo: ItemInfo): Future[Try[Boolean]]
-
-  case class ItemInfo(name: String, price: Int, url: Uri)
-
-  /**
     * Get the price of an item
     * @param item_url
     * @return
     */
-  def getItemInfo(item_url: Uri): Future[Try[ItemInfo]] = {
+  private def getItemInfo(item_url: Uri): Future[Try[ItemInfo]] = {
     implicit val request = Get(item_url) ~> addHeaders(headers)
 
     requestToResponse map { response =>

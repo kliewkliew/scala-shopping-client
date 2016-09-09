@@ -19,7 +19,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
 case class Remambo(username: String, password: String)(implicit actorSystem: ActorSystem)
-  extends Service(username, password) with YahooJapanAuctions /*with YahooJapanShopping*/ with Rakuten {
+  extends Service(username, password) with YahooJapanAuctions with YahooJapanShopping with Rakuten {
   implicit private val url: Uri = "https://www.remambo.jp"
 
   private def requestToken(implicit request: HttpRequest): Future[Try[Token]] = {
@@ -201,7 +201,7 @@ case class Remambo(username: String, password: String)(implicit actorSystem: Act
     else
       findAuctionInfoRow(currentRow.nextElementSibling, desiredHeader)
 
-  override protected def buyRakutenInternal(itemInfo: ItemInfo) =
+  override protected def buy(itemInfo: ItemInfo) =
     authenticate flatMap {
       case Success(cookies) =>
         implicit val implCookies = cookies
