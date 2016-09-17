@@ -37,7 +37,7 @@ trait Rakuten extends Shopper {
     requestToResponse map { response =>
         try {
           val root = Jsoup.parse(response.entity.asString)
-          val name = root.select("body").select("div[id=main_title_waku]").text()
+          val name = root.select("title").text()
           val price = root.select("body").select("div[id=pagebody]").select("table[id=rakutenLimitedId_cart]")
           .select("span[class=price2]").text().replaceAll("円", "").replaceAll(",", "").toInt
           Success(ItemInfo(name, price, item_url))
