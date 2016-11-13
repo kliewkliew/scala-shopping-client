@@ -115,14 +115,15 @@ case class Ebay(username: String, password: String)(implicit actorSystem: ActorS
         implicit val implCookies = cookies
         findAuctionInfo(auction_id, "TimeLeft") map {
           case Success(time) =>
-            def getInt(jsValue: Option[JsValue]) = Try(jsValue.get.asJsObject.toString.toInt)
-            val timeMap = time.fields
+            implicit class JsonTimeConverter(jsValue: Option[JsValue]) {
+              def getInt: Try[Int] = Try(jsValue.get.asJsObject.toString.toInt)
+            }
 
             for {
-              days <- getInt(timeMap.get("DaysLeft"))
-              hours <- getInt(timeMap.get("HoursLeft"))
-              minutes <- getInt(timeMap.get("MinutesLeft"))
-              seconds <- getInt(timeMap.get("SecondsLeft"))
+              days <- time.fields.get("DaysLeft").getInt
+              hours <- time.fields.get("HoursLeft").getInt
+              minutes <- time.fields.get("MinutesLeft").getInt
+              seconds <- time.fields.get("SecondsLeft").getInt
             } yield {
               days * 86400
               + hours * 3600
