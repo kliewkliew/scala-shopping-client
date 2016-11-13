@@ -4,7 +4,6 @@ import client.Service._
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
-import scala.util.{Failure, Success, Try}
 import scala.util.matching.Regex
 
 import akka.actor.ActorSystem
@@ -28,7 +27,7 @@ case class Ebay(username: String, password: String)(implicit actorSystem: ActorS
   // Unique item identifier
   type UIID = String
 
-  override def authenticate: Future[Try[Cookies]] = {
+  override def authenticate: Future[Cookies] = {
     val endpoint: Uri = "https://signin.ebay.com/ws/eBayISAPI.dll"
 
     implicit val request =
@@ -42,19 +41,13 @@ case class Ebay(username: String, password: String)(implicit actorSystem: ActorS
     requestAuthentication
   }
 
-  override def bid(auction_id: String, offer: Int): Future[Try[Boolean]] =
-    authenticate flatMap {
-      case Success(cookies) =>
-        implicit val implCookies = cookies
+  override def bid(auction_id: String, offer: Int): Future[Boolean] =
+    authenticate flatMap { cookies =>
+      implicit val implCookies = cookies
 
-        bidPreview(auction_id) flatMap {
-          case Success(uiid) =>
-            bidPlace(auction_id, offer, uiid)
-          case Failure(error) =>
-            Future.failed(error)
-        }
-      case Failure(error) =>
-        Future.failed(error)
+      bidPreview(auction_id) flatMap { uiid =>
+          bidPlace(auction_id, offer, uiid)
+      }
     }
 
   /**
@@ -64,7 +57,7 @@ case class Ebay(username: String, password: String)(implicit actorSystem: ActorS
     * @param cookies Session cookies
     * @return The token and signature
     */
-  private def bidPreview(auction_id: String)(implicit cookies: Cookies): Future[Try[UIID]] = {
+  private def bidPreview(auction_id: String)(implicit cookies: Cookies): Future[UIID] = {
     val endpoint: Uri = "itm/" + auction_id
 
     implicit val request = Get(endpoint) ~> addHeaders(authHeaders)
@@ -81,7 +74,7 @@ case class Ebay(username: String, password: String)(implicit actorSystem: ActorS
     * @param cookies Session cookies
     * @return true on success
     */
-  private def bidPlace(auction_id: String, offer: Int, uiid: UIID)(implicit cookies: Cookies): Future[Try[Boolean]] = {
+  private def bidPlace(auction_id: String, offer: Int, uiid: UIID)(implicit cookies: Cookies): Future[Boolean] = {
     val endpoint: Uri = "https://offer.ebay.com/ws/eBayISAPI.dll"
 
     val finalEndpoint =
@@ -96,45 +89,33 @@ case class Ebay(username: String, password: String)(implicit actorSystem: ActorS
 
     implicit val request = Get(finalEndpoint) ~> addHeaders(authHeaders)
 
-    requestToResponse flatMap {
-      response => confirmBid(auction_id)
+    requestToResponse flatMap { response =>
+      confirmBid(auction_id)
     }
   }
 
-  override def confirmBid(auction_id: String)(implicit cookies: Cookies): Future[Try[Boolean]] =
-    findAuctionInfo(auction_id, "ViewerItemRelation") map {
-      case Success(bidStatus) =>
-        Success(bidStatus.toString.toUpperCase == "HIGHBIDDER")
-      case Failure(error) =>
-        Failure(new IllegalStateException("Failed to confirm bid"))
-    }
+  override def confirmBid(auction_id: String)(implicit cookies: Cookies): Future[Boolean] =
+    findAuctionInfo(auction_id, "ViewerItemRelation")
+      .map(_.toString.toUpperCase == "HIGHBIDDER")
 
-  override def timeLeft(auction_id: String): Future[Try[Int]] =
-    authenticate flatMap {
-      case Success(cookies) =>
-        implicit val implCookies = cookies
-        findAuctionInfo(auction_id, "TimeLeft") map {
-          case Success(time) =>
-            implicit class JsonTimeConverter(jsValue: Option[JsValue]) {
-              def getInt: Try[Int] = Try(jsValue.get.asJsObject.toString.toInt)
-            }
-
-            for {
-              days <- time.fields.get("DaysLeft").getInt
-              hours <- time.fields.get("HoursLeft").getInt
-              minutes <- time.fields.get("MinutesLeft").getInt
-              seconds <- time.fields.get("SecondsLeft").getInt
-            } yield {
-              days * 86400
-              + hours * 3600
-              + minutes * 60
-              + seconds
-            }
-          case Failure(error) =>
-            Failure(error)
+  override def timeLeft(auction_id: String): Future[Int] =
+    authenticate flatMap { cookies =>
+      implicit val implCookies = cookies
+      findAuctionInfo(auction_id, "TimeLeft") map { time =>
+        implicit class JsonTimeConverter(jsValue: Option[JsValue]) {
+          def getInt: Int = jsValue.get.asJsObject.toString.toInt
         }
-      case Failure(error) =>
-        Future.failed(error)
+
+        val days = time.fields.get("DaysLeft").getInt
+        val hours = time.fields.get("HoursLeft").getInt
+        val minutes = time.fields.get("MinutesLeft").getInt
+        val seconds = time.fields.get("SecondsLeft").getInt
+
+        days * 86400
+        + hours * 3600
+        + minutes * 60
+        + seconds
+      }
     }
 
   /**
@@ -143,22 +124,21 @@ case class Ebay(username: String, password: String)(implicit actorSystem: ActorS
     * @return A UIID
     */
   implicit val UuidUnmarshaller =
-    Unmarshaller[Try[UIID]](`text/html`) {
+    Unmarshaller[UIID](`text/html`) {
       case HttpEntity.NonEmpty(contentType, data) =>
         val line = data.asString.split("\n").find(_.substring(0, 8) == "$rwidgets")
 
-        val uiid =
-          new Regex("""uiid=-?\d+""").findFirstIn(line.getOrElse(""))
-            .getOrElse("").replaceAll("uiid=", "")
+        val uiid = new Regex("""uiid=-?\d+""").findFirstIn(line.getOrElse(""))
+          .getOrElse("").replaceAll("uiid=", "")
 
         if(uiid.nonEmpty)
-          Success(uiid)
+          uiid
         else
-          Failure(new IllegalStateException("Failed to get UIID"))
+          throw new IllegalStateException("Failed to get UIID")
     }
 
-  private def requestUiid(implicit request: HttpRequest): Future[Try[UIID]] = {
-    val newPipeline = gzipPipeline ~> unmarshal[Try[UIID]]
+  private def requestUiid(implicit request: HttpRequest): Future[UIID] = {
+    val newPipeline = gzipPipeline ~> unmarshal[UIID]
     newPipeline(request)
   }
 
@@ -170,7 +150,7 @@ case class Ebay(username: String, password: String)(implicit actorSystem: ActorS
     * @param cookies Session cookies
     * @return The cell value associated with desiredHeader
     */
-  private def findAuctionInfo(auction_id: String, desiredKey: String)(implicit cookies: Cookies): Future[Try[JsObject]] = {
+  private def findAuctionInfo(auction_id: String, desiredKey: String)(implicit cookies: Cookies): Future[JsObject] = {
     val endpoint: Uri = "https://offer.ebay.com/ws/eBayISAPI.dll"
 
     val finalEndpoint =
@@ -183,15 +163,14 @@ case class Ebay(username: String, password: String)(implicit actorSystem: ActorS
 
     implicit val request = Get(finalEndpoint) ~> addHeaders(authHeaders)
 
-    requestToResponse map {
-      response =>
-        val auctionInfo = response.entity.asString.parseJson.asJsObject.fields.get(desiredKey)
+    requestToResponse map { response =>
+      val auctionInfo = response.entity.asString.parseJson.asJsObject.fields.get(desiredKey)
 
-        if (auctionInfo.nonEmpty)
-          Success(auctionInfo.get.asJsObject)
-        else
-          Failure(new IllegalStateException("Failed to get " + desiredKey + " auction info"))
+      if (auctionInfo.nonEmpty)
+        auctionInfo.get.asJsObject
+      else
+        throw new IllegalStateException("Failed to get " + desiredKey + " auction info")
     }
   }
 
-  }
+}

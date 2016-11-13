@@ -13,8 +13,6 @@ import scala.concurrent.duration._
 import scala.concurrent.Future
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.util.{Failure, Success, Try}
-import scala.util.control.NonFatal
 
 /**
   * Cookies for authentication
@@ -33,7 +31,7 @@ abstract class Service (username: String, password: String) {
     *
     * @return A Cookie used for subsequent requests
     */
-  protected def authenticate: Future[Try[Cookies]]
+  protected def authenticate: Future[Cookies]
 }
 
 // TODO: implement automatic retry in `bid`; refactor existing `bid` to `bidInternal`
@@ -45,7 +43,7 @@ trait Bidder extends Service {
     * @param offer Bidding price. Currency is dependant on the service
     * @return true on success
     */
-  def bid(auction_id: String, offer: Int): Future[Try[Boolean]]
+  def bid(auction_id: String, offer: Int): Future[Boolean]
 
   /**
     * Confirm a bid
@@ -54,7 +52,7 @@ trait Bidder extends Service {
     * @param cookies Session cookies
     * @return true if you are winning the auction
     */
-  def confirmBid(auction_id: String)(implicit cookies: Cookies): Future[Try[Boolean]]
+  def confirmBid(auction_id: String)(implicit cookies: Cookies): Future[Boolean]
 }
 
 trait Sniper extends Bidder {
@@ -67,18 +65,17 @@ trait Sniper extends Bidder {
     * @return true on success
     */
   def snipe(auction_id: String, offer: Int) =
-    authenticate map {
-      case Success(cookies: Cookies) =>
-        timeLeft(auction_id) map {
-          time =>
-            Service.actorSystem.scheduler.scheduleOnce((time.getOrElse(120) - 120).seconds) {
-              bid(auction_id, offer)
-            }
+  authenticate map { cookies =>
+    timeLeft(auction_id)
+      .map { time =>
+        Service.actorSystem.scheduler.scheduleOnce((time - 120).seconds) {
+          bid(auction_id, offer)
         }
-
-      case Failure(error) =>
-        Future.failed(error)
-    }
+      }
+      .recoverWith { case _ =>
+        bid(auction_id, offer)
+      }
+  }
 
   /**
     * Get the number of seconds until the auction ends
@@ -86,7 +83,7 @@ trait Sniper extends Bidder {
     * @param auction_id
     * @return Number of seconds
     */
-  def timeLeft(auction_id: String): Future[Try[Int]]
+  def timeLeft(auction_id: String): Future[Int]
 }
 
 /**
@@ -103,7 +100,7 @@ trait Shopper extends Service {
     * @param itemInfo
     * @return
     */
-  protected def buy(itemInfo: ItemInfo): Future[Try[Boolean]]
+  protected def buy(itemInfo: ItemInfo): Future[Boolean]
 }
 
 object Service {
@@ -116,10 +113,10 @@ object Service {
     * @return Service client instance
     */
   def apply(provider: String, username: String, password: String) =
-    provider.toLowerCase match {
-      case "ebay"     => new Ebay(username, password)
-      case "remambo"  => new Remambo(username, password)
-    }
+  provider.toLowerCase match {
+    case "ebay"     => Ebay(username, password)
+    case "remambo"  => Remambo(username, password)
+  }
 
   private[client] val userAgent =
     "Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
@@ -145,9 +142,9 @@ object Service {
 
   private[client] def requestToResponse(implicit request: HttpRequest): Future[HttpResponse] = gzipPipeline(request)
 
-  private[client] def requestAuthentication(implicit request: HttpRequest): Future[Try[Cookies]] = {
+  private[client] def requestAuthentication(implicit request: HttpRequest): Future[Cookies] = {
     implicit val tokenUnmarshaller = CookiesUnmarshaller
-    val newPipeline = gzipPipeline ~> unmarshal[Try[Cookies]]
+    val newPipeline = gzipPipeline ~> unmarshal[Cookies]
     newPipeline(request)
   }
 
@@ -156,12 +153,12 @@ object Service {
     *
     * @return Cookies
     */
-  private val CookiesUnmarshaller = new FromResponseUnmarshaller[Try[Cookies]] {
-    def apply(httpResponse: HttpResponse): Deserialized[Try[Cookies]] = {
+  private val CookiesUnmarshaller = new FromResponseUnmarshaller[Cookies] {
+    def apply(httpResponse: HttpResponse): Deserialized[Cookies] = {
       val cookies = httpResponse.headers.collect { case `Set-Cookie`(cookie) => cookie }
 
       if (cookies.nonEmpty)
-        Right(Success(Cookies(cookies)))
+        Right(Cookies(cookies))
       else
         Left(MalformedContent("Failed to authenticate", new IllegalStateException("Failed to authenticate")))
     }
