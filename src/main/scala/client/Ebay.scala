@@ -39,9 +39,7 @@ case class Ebay(username: String, password: String)(implicit actorSystem: ActorS
           "MfcISAPICommand" -> "SignInWelcome"))
       ) ~> addHeaders(headers)
 
-    requestAuthentication map {
-      case tryCookies => tryCookies
-    }
+    requestAuthentication
   }
 
   override def bid(auction_id: String, offer: Int): Future[Try[Boolean]] =
@@ -71,9 +69,7 @@ case class Ebay(username: String, password: String)(implicit actorSystem: ActorS
 
     implicit val request = Get(endpoint) ~> addHeaders(authHeaders)
 
-    requestUiid map {
-      case uiid => uiid
-    }
+    requestUiid
   }
 
   /**
@@ -101,7 +97,7 @@ case class Ebay(username: String, password: String)(implicit actorSystem: ActorS
     implicit val request = Get(finalEndpoint) ~> addHeaders(authHeaders)
 
     requestToResponse flatMap {
-      case response => confirmBid(auction_id)
+      response => confirmBid(auction_id)
     }
   }
 
@@ -119,31 +115,20 @@ case class Ebay(username: String, password: String)(implicit actorSystem: ActorS
         implicit val implCookies = cookies
         findAuctionInfo(auction_id, "TimeLeft") map {
           case Success(time) =>
+            def getInt(jsValue: Option[JsValue]) = Try(jsValue.get.asJsObject.toString.toInt)
             val timeMap = time.fields
 
-            val days = timeMap.get("DaysLeft")
-            val hours = timeMap.get("HoursLeft")
-            val minutes = timeMap.get("MinutesLeft")
-            val seconds = timeMap.get("SecondsLeft")
-
-            def secondsLeft: Try[Int] = {
-              def getInt(jsValue: Option[JsValue]) = jsValue.get.asJsObject.toString.toInt // toInt throws exception
-              try {
-                Success(
-                  getInt(days) * 86400
-                    + getInt(hours) * 3600
-                    + getInt(minutes) * 60
-                    + getInt(seconds))
-              }
-              catch {
-                case e: Exception => Failure(e)
-              }
+            for {
+              days <- getInt(timeMap.get("DaysLeft"))
+              hours <- getInt(timeMap.get("HoursLeft"))
+              minutes <- getInt(timeMap.get("MinutesLeft"))
+              seconds <- getInt(timeMap.get("SecondsLeft"))
+            } yield {
+              days * 86400
+              + hours * 3600
+              + minutes * 60
+              + seconds
             }
-
-            if (days.isDefined && hours.isDefined && minutes.isDefined && seconds.isDefined)
-              secondsLeft
-            else
-              Failure(new IllegalStateException("Failed to get time to auction end"))
           case Failure(error) =>
             Failure(error)
         }
@@ -198,7 +183,7 @@ case class Ebay(username: String, password: String)(implicit actorSystem: ActorS
     implicit val request = Get(finalEndpoint) ~> addHeaders(authHeaders)
 
     requestToResponse map {
-      case response =>
+      response =>
         val auctionInfo = response.entity.asString.parseJson.asJsObject.fields.get(desiredKey)
 
         if (auctionInfo.nonEmpty)

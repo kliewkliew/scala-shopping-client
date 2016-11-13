@@ -35,18 +35,12 @@ trait Rakuten extends Shopper {
     implicit val request = Get(item_url) ~> addHeaders(headers)
 
     requestToResponse map { response =>
-        try {
-          val root = Jsoup.parse(response.entity.asString)
-          val name = root.select("title").text()
-          val price = root.select("body").select("div[id=pagebody]").select("table[id=rakutenLimitedId_cart]")
-          .select("span[class=price2]").text().replaceAll("円", "").replaceAll(",", "").toInt
-          Success(ItemInfo(name, price, item_url))
-        }
-        catch {
-          case e: Exception => Failure(e)
-        }
+      val root = Jsoup.parse(response.entity.asString)
+      val name = root.select("title").text()
+      val priceT = Try(root.select("body").select("div[id=pagebody]").select("table[id=rakutenLimitedId_cart]")
+        .select("span[class=price2]").text().replaceAll("円", "").replaceAll(",", "").toInt)
 
+      priceT.map(ItemInfo(name, _, item_url))
     }
-
   }
 }

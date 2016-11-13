@@ -140,24 +140,13 @@ case class Remambo(username: String, password: String)(implicit actorSystem: Act
   }
 
   override def confirmBid(auction_id: String)(implicit cookies: Cookies): Future[Try[Boolean]] =
-    findAuctionInfo(auction_id, "Highest Bidder") map {
-      case Success(highestBidder) =>
-        Success(highestBidder == "You")
-      case Failure(error) =>
-        Failure(error)
+    findAuctionInfo(auction_id, "Highest Bidder") map { tryBidder =>
+      tryBidder.map(_ == "You")
     }
 
   override def getMinimumIncrement(auction_id: String)(implicit cookies: Cookies): Future[Try[Short]] =
-    findAuctionInfo(auction_id, "Bid Step") map {
-      case Success(increment) =>
-        try {
-          Success(increment.toShort) // toShort throws exception
-        }
-        catch {
-          case e: Exception => Failure(e)
-        }
-      case Failure(error) =>
-        Failure(error)
+    findAuctionInfo(auction_id, "Bid Step") map { tryString =>
+      tryString.map(_.toShort)
     }
 
   /**
@@ -221,14 +210,8 @@ case class Remambo(username: String, password: String)(implicit actorSystem: Act
         implicit val request = Get(uri(finalEndpoint)) ~> addHeaders(authHeaders)
 
         requestToResponse map { response =>
-          try {
-            val root = Jsoup.parse(response.entity.asString)
-            val resultText = root.select("body").text()
-            Success(resultText.contains("Your order is accepted"))
-          }
-          catch {
-            case e: Exception => Failure(e)
-          }
+          val root = Jsoup.parse(response.entity.asString)
+          Success(root.select("body").text().contains("Your order is accepted"))
         }
       case Failure(error) =>
         Future.failed(error)

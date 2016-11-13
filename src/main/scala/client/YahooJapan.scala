@@ -25,14 +25,8 @@ trait YahooJapanAuctions extends Sniper {
 
     implicit val request = Get(uri(finalEndpoint)) ~> addHeaders(headers)
 
-    requestToResponse map {
-      response =>
-        try {
-          Success(response.entity.asString.toInt) // toInt throws exception
-        }
-        catch {
-          case e: Exception => Failure(e)
-        }
+    requestToResponse map { response =>
+        Try(response.entity.asString.toInt)
     }
   }
 
@@ -78,15 +72,11 @@ trait YahooJapanShopping extends Shopper {
     implicit val request = Get(item_url) ~> addHeaders(headers)
 
     requestToResponse map { response =>
-      try {
-        val root = Jsoup.parse(response.entity.asString)
-        val name = root.select("title").text()
-        val price = root.select("meta[itemprop=price]").attr("content").toInt
-        Success(ItemInfo(name, price, item_url))
-      }
-      catch {
-        case e: Exception => Failure(e)
-      }
+      val root = Jsoup.parse(response.entity.asString)
+      val name = root.select("title").text()
+      val priceT = Try(root.select("meta[itemprop=price]").attr("content").toInt)
+
+      priceT.map(ItemInfo(name, _, item_url))
     }
   }
 }
