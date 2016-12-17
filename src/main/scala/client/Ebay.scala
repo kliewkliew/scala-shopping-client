@@ -58,7 +58,7 @@ case class Ebay(username: String, password: String)(implicit actorSystem: ActorS
     * @return The token and signature
     */
   private def bidPreview(auction_id: String)(implicit cookies: Cookies): Future[UIID] = {
-    val endpoint: Uri = "itm/" + auction_id
+    val endpoint: Uri = "https://ebay.com/itm/" + auction_id
 
     implicit val request = Get(endpoint) ~> addHeaders(authHeaders)
 
